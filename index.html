@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNAKE//SYS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+  :root {
+    --green: #00ff41;
+    --green-dim: #00aa2a;
+    --green-glow: rgba(0,255,65,0.15);
+    --green-glow-strong: rgba(0,255,65,0.4);
+    --bg: #030f03;
+    --grid: #040d04;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none;
+    z-index: 101;
+  }
+
+  #header {
+    font-family: 'VT323', monospace;
+    font-size: 2.2rem;
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 20px var(--green), 0 0 40px var(--green-dim);
+    margin-bottom: 6px;
+    animation: flicker 8s infinite;
+  }
+
+  #statusbar {
+    display: flex;
+    gap: 40px;
+    font-size: 0.75rem;
+    color: var(--green-dim);
+    margin-bottom: 12px;
+    letter-spacing: 0.1em;
+  }
+
+  #statusbar span { color: var(--green); }
+
+  #canvas-wrapper {
+    position: relative;
+    border: 1px solid var(--green-dim);
+    box-shadow: 0 0 30px var(--green-glow), inset 0 0 30px rgba(0,0,0,0.5), 0 0 60px rgba(0,255,65,0.07);
+  }
+
+  #canvas-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 1px solid rgba(0,255,65,0.15);
+    pointer-events: none;
+  }
+
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(3,15,3,0.88);
+    font-family: 'VT323', monospace;
+    z-index: 10;
+    transition: opacity 0.3s;
+  }
+
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  #overlay h2 {
+    font-size: 3.5rem;
+    text-shadow: 0 0 20px var(--green), 0 0 50px var(--green);
+    letter-spacing: 0.2em;
+    margin-bottom: 10px;
+  }
+
+  #overlay .sub {
+    font-size: 1.2rem;
+    color: var(--green-dim);
+    margin-bottom: 30px;
+    letter-spacing: 0.15em;
+  }
+
+  #overlay .hint {
+    font-size: 1.6rem;
+    animation: blink 1s step-end infinite;
+    letter-spacing: 0.1em;
+  }
+
+  #overlay .score-display {
+    font-size: 2rem;
+    margin-bottom: 6px;
+    letter-spacing: 0.1em;
+  }
+
+  #footer {
+    margin-top: 10px;
+    font-size: 0.65rem;
+    color: rgba(0,255,65,0.3);
+    letter-spacing: 0.2em;
+    text-align: center;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+    98% { opacity: 0.9; }
+    99% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<div id="header">SNAKE//SYS</div>
+<div id="statusbar">
+  SCORE: <span id="score-display">0000</span>
+  &nbsp;&nbsp;&nbsp;
+  HIGH: <span id="hi-display">0000</span>
+  &nbsp;&nbsp;&nbsp;
+  LVL: <span id="lvl-display">01</span>
+</div>
+
+<div id="canvas-wrapper">
+  <canvas id="game" width="400" height="400"></canvas>
+  <div id="overlay">
+    <h2 id="overlay-title">SNAKE//SYS</h2>
+    <div class="sub" id="overlay-sub">PROCESS INITIALIZED</div>
+    <div class="score-display" id="overlay-score" style="display:none"></div>
+    <div class="hint" id="overlay-hint">[ PRESS ENTER TO BOOT ]</div>
+  </div>
+</div>
+
+<div id="footer">WASD / ARROW KEYS &nbsp;•&nbsp; SPACE TO PAUSE &nbsp;•&nbsp; ESC TO RESET</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const scoreEl = document.getElementById('score-display');
+const hiEl = document.getElementById('hi-display');
+const lvlEl = document.getElementById('lvl-display');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub = document.getElementById('overlay-sub');
+const overlayScore = document.getElementById('overlay-score');
+const overlayHint = document.getElementById('overlay-hint');
+
+const COLS = 20, ROWS = 20;
+const CELL = canvas.width / COLS;
+
+let snake, dir, nextDir, food, score, hiScore = 0, speed, gameLoop, paused, state;
+
+function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function spawnFood() {
+  let pos;
+  do { pos = { x: rand(0, COLS-1), y: rand(0, ROWS-1) }; }
+  while (snake.some(s => s.x === pos.x && s.y === pos.y));
+  return pos;
+}
+
+function initGame() {
+  snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+  dir = { x: 1, y: 0 };
+  nextDir = { x: 1, y: 0 };
+  food = spawnFood();
+  score = 0;
+  speed = 120;
+  paused = false;
+  updateUI();
+}
+
+function updateUI() {
+  scoreEl.textContent = String(score).padStart(4, '0');
+  hiEl.textContent = String(hiScore).padStart(4, '0');
+  lvlEl.textContent = String(Math.floor(score/50)+1).padStart(2, '0');
+}
+
+function gameStep() {
+  dir = { ...nextDir };
+  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+  // Wall collision
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+    return endGame();
+  }
+  // Self collision
+  if (snake.some(s => s.x === head.x && s.y === head.y)) {
+    return endGame();
+  }
+
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    score += 10;
+    if (score > hiScore) hiScore = score;
+    food = spawnFood();
+    speed = Math.max(55, 120 - Math.floor(score / 50) * 8);
+    updateUI();
+    clearInterval(gameLoop);
+    gameLoop = setInterval(tick, speed);
+  } else {
+    snake.pop();
+  }
+}
+
+function tick() {
+  if (!paused) { gameStep(); draw(); }
+}
+
+// Particle effects for food eaten
+let particles = [];
+function spawnParticles(x, y) {
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    particles.push({
+      x: x * CELL + CELL/2, y: y * CELL + CELL/2,
+      vx: Math.cos(angle) * rand(2,5), vy: Math.sin(angle) * rand(2,5),
+      life: 1, size: rand(2,4)
+    });
+  }
+}
+
+function draw() {
+  // Background
+  ctx.fillStyle = '#030f03';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,255,65,0.04)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y*CELL); ctx.lineTo(canvas.width, y*CELL); ctx.stroke();
+  }
+
+  // Particles
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = '#00ff41';
+    ctx.shadowBlur = 6; ctx.shadowColor = '#00ff41';
+    ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    p.x += p.vx; p.y += p.vy; p.life -= 0.12;
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Snake
+  for (let i = 0; i < snake.length; i++) {
+    const s = snake[i];
+    const isHead = i === 0;
+    const alpha = isHead ? 1 : 0.5 + (0.5 * (snake.length - i) / snake.length);
+    const pad = isHead ? 1 : 2;
+
+    ctx.shadowBlur = isHead ? 16 : 6;
+    ctx.shadowColor = '#00ff41';
+    ctx.fillStyle = isHead ? '#00ff41' : `rgba(0,${Math.floor(180 + 75*(snake.length-i)/snake.length)},${Math.floor(50 + 30*(snake.length-i)/snake.length)},${alpha})`;
+    ctx.fillRect(s.x*CELL + pad, s.y*CELL + pad, CELL - pad*2, CELL - pad*2);
+
+    if (isHead) {
+      // Eyes
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#030f03';
+      const ex = dir.x === 0 ? [CELL*0.28, CELL*0.68] : (dir.x > 0 ? [CELL*0.6, CELL*0.6] : [CELL*0.3, CELL*0.3]);
+      const ey = dir.y === 0 ? [CELL*0.28, CELL*0.28] : (dir.y > 0 ? [CELL*0.6, CELL*0.6] : [CELL*0.3, CELL*0.3]);
+      ctx.fillRect(s.x*CELL + ex[0], s.y*CELL + (dir.y === 0 ? ey[0] : ey[0]), 3, 3);
+      ctx.fillRect(s.x*CELL + (dir.y === 0 ? ex[0] : ex[0]), s.y*CELL + (dir.y === 0 ? CELL*0.68 : ey[1]), 3, 3);
+    }
+  }
+  ctx.shadowBlur = 0;
+
+  // Food - pulsing
+  const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 200);
+  ctx.shadowBlur = 20 * pulse;
+  ctx.shadowColor = '#ff0040';
+  ctx.fillStyle = `rgba(255, ${Math.floor(0 + 60*pulse)}, 64, 1)`;
+  const fp = 3;
+  ctx.fillRect(food.x*CELL + fp, food.y*CELL + fp, CELL - fp*2, CELL - fp*2);
+
+  // Food inner glow
+  ctx.fillStyle = `rgba(255, 120, 120, ${0.4 * pulse})`;
+  ctx.fillRect(food.x*CELL + fp+2, food.y*CELL + fp+2, CELL - fp*2 - 4, CELL - fp*2 - 4);
+  ctx.shadowBlur = 0;
+
+  // Pause indicator
+  if (paused) {
+    ctx.fillStyle = 'rgba(0,255,65,0.06)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function endGame() {
+  clearInterval(gameLoop);
+  state = 'dead';
+  // Death flash
+  let flashes = 0;
+  const flashInterval = setInterval(() => {
+    ctx.fillStyle = `rgba(255,0,64,${0.3 - flashes*0.05})`;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    if (++flashes > 4) { clearInterval(flashInterval); showDead(); }
+  }, 80);
+}
+
+function showDead() {
+  overlayTitle.textContent = 'TERMINATED';
+  overlaySub.textContent = 'SEGMENTATION FAULT';
+  overlayScore.style.display = 'block';
+  overlayScore.textContent = `SCORE: ${String(score).padStart(4,'0')}`;
+  overlayHint.textContent = '[ PRESS ENTER TO RESTART ]';
+  overlay.classList.remove('hidden');
+}
+
+function startGame() {
+  initGame();
+  overlayTitle.textContent = 'SNAKE//SYS';
+  overlaySub.textContent = 'PROCESS INITIALIZED';
+  overlayScore.style.display = 'none';
+  overlayHint.textContent = '[ PRESS ENTER TO BOOT ]';
+  overlay.classList.add('hidden');
+  state = 'playing';
+  clearInterval(gameLoop);
+  gameLoop = setInterval(tick, speed);
+}
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && state !== 'playing') {
+    e.preventDefault(); startGame(); return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault(); clearInterval(gameLoop); state = 'dead'; showDead(); return;
+  }
+  if (e.key === ' ' && state === 'playing') {
+    e.preventDefault(); paused = !paused;
+    if (paused) { ctx.fillStyle='rgba(0,255,65,0.06)'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+    return;
+  }
+  const moves = {
+    ArrowUp: {x:0,y:-1}, w: {x:0,y:-1}, W: {x:0,y:-1},
+    ArrowDown: {x:0,y:1}, s: {x:0,y:1}, S: {x:0,y:1},
+    ArrowLeft: {x:-1,y:0}, a: {x:-1,y:0}, A: {x:-1,y:0},
+    ArrowRight: {x:1,y:0}, d: {x:1,y:0}, D: {x:1,y:0},
+  };
+  const m = moves[e.key];
+  if (m) {
+    e.preventDefault();
+    if (!(m.x === -dir.x && m.y === -dir.y)) nextDir = m;
+  }
+});
+
+// Touch controls
+let touchStart = null;
+canvas.addEventListener('touchstart', e => { touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY }; });
+canvas.addEventListener('touchend', e => {
+  if (!touchStart) return;
+  const dx = e.changedTouches[0].clientX - touchStart.x;
+  const dy = e.changedTouches[0].clientY - touchStart.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    const m = dx > 0 ? {x:1,y:0} : {x:-1,y:0};
+    if (!(m.x === -dir.x)) nextDir = m;
+  } else {
+    const m = dy > 0 ? {x:0,y:1} : {x:0,y:-1};
+    if (!(m.y === -dir.y)) nextDir = m;
+  }
+  touchStart = null;
+});
+
+// Initial draw
+initGame();
+draw();
+state = 'idle';
+</script>
+</body>
+</html>
